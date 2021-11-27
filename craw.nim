@@ -1,20 +1,38 @@
-# Small utility for creating binary C constants from files
+# Small utility for creating binary C constants from files such as png images and shader code
 import std/[os, strutils]
+import nimPNG
 
-proc process(target: string, output_ident: string, output_path: string) =
+func bytes_to_c_array_init(data: string): string =
+  result = newStringOfCap(data.len * 3)
+  for idx, ch in data[0..data.high]:
+    result &= "0x" & toHex(ch.byte) & ','
+  result &= "0x" & toHex(data[data.high].byte)
+
+proc process_png*(data: string, c_name: string): string =
+  let image = decodePNG32(data)
+  result = "const char " & c_name & "[] = {" & bytes_to_c_array_init(image.data) & "};\n"
+  result &= "const size_t " & c_name & "_width = " & $image.width & ";\n"
+  result &= "const size_t " & c_name & "_height = " & $image.height & ";"
+
+func process_binary*(data: string, c_name: string): string =
+  "const char " & c_name & "[] = {" & bytes_to_c_array_init(data) & "};"
+
+proc process*(target: string, c_name: string, output_path: string) =
   var file: File
   if not open(file, target):
     echo "can't open file"
     return
   let data = file.readAll()
   file.close()
-  var data_in_hex = newStringOfCap(data.len * 3)
-  for idx, ch in data[0..data.high]:
-    data_in_hex &= "0x" & toHex(ch.byte) & ','
-  data_in_hex &= "0x" & toHex(data[data.high].byte)
+
+  let final =
+    if target.endswith(".png"):
+      process_png(data, c_name)
+    else:
+      process_binary(data, c_name)
+
   var output: File
   if open(output, output_path, fmWrite):
-    let final = "const char " & output_ident & "[] = {" & data_in_hex & "};"
     output.write(final)
     output.close()
   else:
